@@ -1,7 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_arch/common/paginated_result.dart';
 import 'package:flutter_arch/common/widgets/error_message.dart';
 import 'package:flutter_arch/common/widgets/loading.dart';
+import 'package:flutter_arch/ioc.dart';
 import 'package:flutter_arch/models/article/article.dart';
 import 'package:flutter_arch/state/article/article_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -37,27 +39,83 @@ class HomePage extends HookWidget {
 
     useEffect(
       () {
-        context.read<ArticleCubit>().getTopHeadlines();
+        getIt<ArticleCubit>().getTopHeadlines(page: 1);
         return;
       },
-      [],
+      const [],
+    );
+
+    final controller = useScrollController();
+    final showGoTo = useState(false);
+
+    useEffect(
+      () {
+        void scrollChange() {
+          final maxScroll = controller.position.maxScrollExtent;
+          final currentScroll = controller.offset;
+
+          if (currentScroll > 0) {
+            showGoTo.value = true;
+          } else {
+            showGoTo.value = false;
+          }
+
+          if (maxScroll == currentScroll) {
+            getIt<ArticleCubit>().state.topHeadlines.whenOrNull(
+              success: (currentResult) {
+                if (currentResult.value.length == currentResult.totalResults) {
+                  return;
+                }
+
+                getIt<ArticleCubit>().getTopHeadlines(
+                  page: currentResult.currentPage + 1,
+                );
+              },
+            );
+          }
+        }
+
+        controller.addListener(scrollChange);
+        return;
+      },
+      const [],
     );
 
     return Scaffold(
       appBar: AppBar(
         title: Text(getPageTitle()),
       ),
-      body: BlocBuilder<ArticleCubit, ArticleState>(
-        builder: (context, state) {
-          return state.topHeadlines.when(
-            loading: () => const Loading(),
-            failure: (failure) => ErrorMessage(
-              onRetry: context.read<ArticleCubit>().getTopHeadlines,
-              message: failure.messageOrDefault,
-            ),
-            success: _Success.new,
-          );
-        },
+      floatingActionButton: showGoTo.value
+          ? FloatingActionButton(
+              onPressed: () => controller.jumpTo(0),
+              child: const Icon(Icons.arrow_upward_rounded),
+            )
+          : null,
+      body: IndexedStack(
+        index: SelectedHomePageView.values.indexOf(selectedHomePageView.value),
+        children: [
+          BlocBuilder<ArticleCubit, ArticleState>(
+            builder: (context, state) {
+              return state.topHeadlines.when(
+                loading: () => const Loading(),
+                failure: (failure) => ErrorMessage(
+                  onRetry: () => getIt<ArticleCubit>().getTopHeadlines(page: 1),
+                  message: failure.messageOrDefault,
+                ),
+                success: (result) => _Success(
+                  result,
+                  controller: controller,
+                ),
+              );
+            },
+          ),
+          const Center(
+            child: Text('Page 2'),
+          ),
+          const Center(
+            child: Text('Page 3'),
+          ),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         onDestinationSelected: (index) =>
@@ -90,20 +148,26 @@ class HomePage extends HookWidget {
   }
 }
 
-class _Success extends StatelessWidget {
-  const _Success(this.articles, {Key? key}) : super(key: key);
+class _Success extends HookWidget {
+  const _Success(
+    this.articlesResult, {
+    Key? key,
+    required this.controller,
+  }) : super(key: key);
 
-  final List<Article> articles;
+  final PaginatedResult<Articles> articlesResult;
+  final ScrollController controller;
 
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
-      onRefresh: context.read<ArticleCubit>().getTopHeadlines,
+      onRefresh: () => getIt<ArticleCubit>().getTopHeadlines(page: 1),
       child: ListView.separated(
-        itemCount: articles.length,
+        controller: controller,
+        itemCount: articlesResult.value.length,
         separatorBuilder: (context, _) => const Divider(),
         itemBuilder: (context, index) {
-          final article = articles[index];
+          final article = articlesResult.value[index];
           return ListTile(
             onTap: () {
               launchUrlString(article.url!);
@@ -112,7 +176,7 @@ class _Success extends StatelessWidget {
             subtitle: Text(article.description ?? ''),
             leading: article.urlToImage != null
                 ? _Image(imageUrl: article.urlToImage!)
-                : const SizedBox.shrink(),
+                : null,
           );
         },
       ),

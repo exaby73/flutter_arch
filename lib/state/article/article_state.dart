@@ -5,12 +5,12 @@ part of 'article_cubit.dart';
 @freezed
 class ArticleState with _$ArticleState {
   const factory ArticleState({
-    required SingleState<List<Article>> topHeadlines,
+    required DataState<PaginatedResult<Articles>> topHeadlines,
   }) = _ArticleState;
 
   factory ArticleState.initial() {
     return ArticleState(
-      topHeadlines: SingleState.loading(),
+      topHeadlines: DataState.loading(),
     );
   }
 }
