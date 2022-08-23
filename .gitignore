@@ -46,7 +46,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .fvm/flutter_sdk
-.env.b
+.env
 
 *.freezed.dart
 *.g.dart
