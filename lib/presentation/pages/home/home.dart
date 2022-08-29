@@ -76,7 +76,7 @@ class HomePage extends HookWidget {
         }
 
         controller.addListener(scrollChange);
-        return;
+        return () => controller.removeListener(scrollChange);
       },
       const [],
     );
